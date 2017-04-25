@@ -38,19 +38,6 @@ import vitables.utils
 _ENUM_DTYPE = np.dtype('S32')
 
 
-def get_enum_column_description(data_source):
-    """Return the dictionary which maps column index to enum dict."""
-    if not isinstance(data_source, tables.Table):
-        return {}
-    enum_columns = {}
-    for _, column_description in data_source.coldescrs.items():
-        if not isinstance(column_description, tables.EnumCol):
-            continue
-        enum_columns[column_description._v_pos] = \
-            {value: name for name, value in column_description.enum}
-    return enum_columns
-
-
 class LeafModel(QtCore.QAbstractTableModel):
     """
     The model for real data contained in leaves.
@@ -68,8 +55,7 @@ class LeafModel(QtCore.QAbstractTableModel):
         """Create the model.
         """
 
-        # The model data source (a PyTables/HDF5 leaf) and its access buffer
-        self.data_source = rbuffer.data_source
+        # The model's data source (a PyTables/HDF5 leaf) wrapped in a Buffer.
         self.rbuffer = rbuffer
 
         # The number of digits of the last row
@@ -86,41 +72,18 @@ class LeafModel(QtCore.QAbstractTableModel):
         if self.numrows > self.rbuffer.chunk_size:
             self.numrows = self.rbuffer.chunk_size
 
-        # The dataset number of columns doesn't use to be large so, we don't
-        # need set a maximum as we did with rows. The whole set of columns
-        # are displayed
-        if isinstance(self.data_source, tables.Table):
-            # Leaf is a PyTables table
-            self.numcols = len(self.data_source.colnames)
-        elif isinstance(self.data_source, tables.EArray):
-            self.numcols = 1
-        else:
-            # Leaf is some kind of PyTables array
-            shape = self.data_source.shape
-            if len(shape) > 1:
-                # The leaf will be displayed as a bidimensional matrix
-                self.numcols = shape[1]
-            else:
-                # The leaf will be displayed as a column vector
-                self.numcols = 1
+        self.numcols = self.rbuffer.leafNumberOfCols()
 
         #
         # Choose a format for cells
         #
 
-        self.formatContent = vitables.utils.formatArrayContent
-        self._enum_columns_desc = get_enum_column_description(self.data_source)
-
         # Time series (if they are found) are formatted transparently
         # via the time_series.py plugin
+        self.formatContent = rbuffer.get_cell_formatter()
+        self._enum_columns_desc = rbuffer.get_enum_column_description()
+        self._column_names = rbuffer.get_column_names_map()
 
-        if not isinstance(self.data_source, tables.Table):
-            # Leaf is some kind of PyTables array
-            atom_type = self.data_source.atom.type
-            if atom_type == 'object':
-                self.formatContent = vitables.utils.formatObjectContent
-            elif atom_type in ('vlstring', 'vlunicode'):
-                self.formatContent = vitables.utils.formatStringContent
 
         # Track selected cell
         self.selected_cell = {'index': QtCore.QModelIndex(), 'buffer_start': 0}
@@ -155,11 +118,9 @@ class LeafModel(QtCore.QAbstractTableModel):
             return None
         # The section label for horizontal header
         if orientation == QtCore.Qt.Horizontal:
-            # For tables horizontal labels are column names, for arrays
-            # the section numbers are used as horizontal labels
-            if hasattr(self.data_source, 'description'):
-                return str(self.data_source.colnames[section])
-            return str(section)
+            if self._column_names is None:
+                return str(section)
+            return str(self._column_names[section])
         # The section label for vertical header. This is a 64 bits integer
         return str(self.rbuffer.start + section)
 
@@ -179,17 +140,18 @@ class LeafModel(QtCore.QAbstractTableModel):
         if not index.isValid() \
            or not (0 <= index.row() < self.numrows):
             return None
+        col_indice = index.column()
         cell = self.rbuffer.getCell(self.rbuffer.start + index.row(),
-                                    index.column())
-        if index.column() in self._enum_columns_desc:
+                                    col_indice)
+        if col_indice in self._enum_columns_desc:
             if isinstance(cell, collections.Iterable):
                 cell = np.array([
                     _ENUM_DTYPE.type(
-                        self._enum_columns_desc[index.column()].get(c, c))
+                        self._enum_columns_desc[col_indice].get(c, c))
                     for c in cell])
             else:
                 cell = _ENUM_DTYPE.type(
-                    self._enum_columns_desc[index.column()].get(cell, cell))
+                    self._enum_columns_desc[col_indice].get(cell, cell))
         if role == QtCore.Qt.DisplayRole:
             return self.formatContent(cell)
         elif role == QtCore.Qt.TextAlignmentRole:
