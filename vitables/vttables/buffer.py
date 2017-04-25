@@ -108,9 +108,17 @@ class Buffer(object):
         # Setting the reader method at initialization time increases the
         # speed of reading several orders of magnitude
         shape = leaf.shape
+        self._pandas_hdfstore = False
         if isinstance(leaf, tables.Table):
-            # Dataset elements will be read like a[row][column]
-            self.getCell = self.arrayCell
+            #
+            ## Dataset elements will be read like a[row][column]
+
+            sample_df = self.try_as_pandas_dataframe(leaf)
+            if sample_df is None:
+                self.getCell = self.arrayCell
+            else:
+                self.chunk = sample_df
+                self.getCell = self.dataFrameCell
         elif isinstance(leaf, tables.EArray):
             self.getCell = self.EArrayCell
         elif isinstance(leaf, tables.VLArray):
@@ -160,6 +168,79 @@ class Buffer(object):
             nrows = self.data_source.nrows
 
         return numpy.array(nrows, dtype=numpy.int64)
+
+    def leafNumberOfCols(self):
+        """Return the full-length of the leaf's columns."""
+        data_source = self.data_source
+
+        # The dataset number of columns doesn't use to be large so, we don't
+        # need set a maximum as we did with rows. The whole set of columns
+        # are displayed
+        if self._pandas_hdfstore:
+            numcols = self.chunk.shape[1]
+        elif isinstance(data_source, tables.Table):
+            # Leaf is a PyTables table
+            numcols = len(data_source.colnames)
+        elif isinstance(data_source, tables.EArray):
+            numcols = 1
+        else:
+            # Leaf is some kind of PyTables array
+            shape = data_source.shape
+            if len(shape) > 1:
+                # The leaf will be displayed as a bidimensional matrix
+                numcols = shape[1]
+            else:
+                # The leaf will be displayed as a column vector
+                numcols = 1
+
+        return numcols
+
+    def get_enum_column_description(self):
+        """Return the dictionary which maps column index to enum dict."""
+        data_source = self.data_source
+
+        enum_columns = {}
+        if isinstance(data_source, tables.Table):
+            for _, column_description in data_source.coldescrs.items():
+                if not isinstance(column_description, tables.EnumCol):
+                    continue
+                enum_columns[column_description._v_pos] = {
+                    value: name for name, value in column_description.enum}
+
+#        ## Utterly wrong!
+#        if self._pandas_hdfstore:
+#            import numpy as np
+#            enum_columns = {col: tables.StringCol
+#                                if dtype == np.object
+#                                else tables.Col.from_dtype(dtype)
+#                            for col, dtype in enumerate(self.chunk.dtypes.values)}
+#        else:
+        return enum_columns
+
+    def get_column_names_map(self):
+        """return either an map of `{indice: name}` or None to enumerate them."""
+        # For tables horizontal labels are column names, for arrays
+        # the section numbers are used as horizontal labels
+        if self._pandas_hdfstore:
+            return self.chunk.columns
+        if hasattr(self.data_source, 'description'):
+            return self.data_source.colnames
+
+    def get_cell_formatter(self):
+        if self._pandas_hdfstore:
+            ## TODO: handle only palin DataFrame cells.
+            return lambda v: '' if None else str(v)
+
+        formatter = vitables.utils.formatArrayContent
+        if not isinstance(self.data_source, tables.Table):
+            # Leaf is some kind of PyTables array
+            atom_type = self.data_source.atom.type
+            if atom_type == 'object':
+                formatter = vitables.utils.formatObjectContent
+            elif atom_type in ('vlstring', 'vlunicode'):
+                formatter = vitables.utils.formatStringContent
+
+        return formatter
 
     def getReadParameters(self, start, buffer_size):
         """
@@ -250,7 +331,14 @@ class Buffer(object):
             # Warning: in a EArray with shape (2,3,3) and extdim attribute
             # being 1, the read method will have 3 rows. However, the numpy
             # array returned by EArray.read() will have only 2 rows
-            data = self.data_source.read(start, stop)
+            if self._pandas_hdfstore:
+                import pandas as pd
+
+                ## TODO: turn to configurable method
+                pgroup = self.data_source._g_getparent()
+                data = pd.read_hdf(self._pandas_hdfstore, pgroup._v_pathname, start=start, stop=stop)
+            else:
+                data = self.data_source.read(start, stop)
         except tables.HDF5ExtError:
             self.logger.error(
                 translate('Buffer', """\nError: problems reading records. """
@@ -373,6 +461,57 @@ class Buffer(object):
         # and fields can be read from nestedrecordJ using indexing notation
         try:
             return self.chunk[int(row - self.start)][col]
+        except IndexError:
+            self.logger.error('IndexError! buffer start: {0} row, column: '
+                              '{1}, {2}'.format(self.start, row, col))
+
+    ######################
+    ## PANDAS DATAFRAME
+    #
+
+    def try_as_pandas_dataframe(self, leaf):
+        pgroup = leaf._g_getparent()
+        assert pgroup._c_classid == 'GROUP', (leaf, pgroup)
+
+        pandas_attr = getattr(pgroup._v_attrs,
+                              'pandas_type', None)
+        if pandas_attr == 'frame_table':
+            import pandas as pd
+
+            from .pandas import HDFStoreWrapper
+
+            self._pandas_hdfstore = hstore = HDFStoreWrapper(leaf._v_file)
+            sample_df = next(iter(pd.read_hdf(hstore, pgroup._v_pathname, chunksize=1)))
+
+            return sample_df
+
+    def dataFrameCell(self, row, col):
+        """
+        Returns a cell of a ND-array view or a table view.
+
+        The indices values are not checked (and could not be in the
+        buffer) so they should be checked by the caller methods.
+
+        :Parameters:
+
+        - `row`: the row to which the cell belongs. It is a 64 bits integer
+        - `col`: the column to wich the cell belongs
+
+        :Returns: the cell at position `(row, col)` of the document
+        """
+
+        # We must shift the row value by self.start units in order to get the
+        # right chunk element. Note that indices of chunk needn't to be
+        # int64 because they are indexing a fixed size, small chunk of
+        # data (see ctor docstring).
+        # For arrays we have
+        # chunk = [row0, row1, row2, ..., rowN]
+        # and columns can be read from a given row using indexing notation
+        # For tables we have
+        # chunk = [nestedrecord0, nestedrecord1, ..., nestedrecordN]
+        # and fields can be read from nestedrecordJ using indexing notation
+        try:
+            return self.chunk.iloc[int(row - self.start), col]
         except IndexError:
             self.logger.error('IndexError! buffer start: {0} row, column: '
                               '{1}, {2}'.format(self.start, row, col))
