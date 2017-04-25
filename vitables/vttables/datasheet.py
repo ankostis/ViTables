@@ -157,6 +157,7 @@ class DataSheet(QtWidgets.QMdiSubWindow):
         data = tmodel.rbuffer.getCell(tmodel.rbuffer.start + row, column)
 
         # The title of the zoomed view
+        ## TODO: DataFrame not working yet
         node = self.dbt_leaf
         info = nodeinfo.NodeInfo(node)
         if node.node_kind == 'table':
