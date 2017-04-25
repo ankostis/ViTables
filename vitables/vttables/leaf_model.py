@@ -122,7 +122,7 @@ class LeafModel(QtCore.QAbstractTableModel):
                 return str(section)
             return str(self._column_names[section])
         # The section label for vertical header. This is a 64 bits integer
-        return str(self.rbuffer.start + section)
+        return self.formatContent(self.rbuffer.get_indice_cell(section))
 
 
     def data(self, index, role=QtCore.Qt.DisplayRole):

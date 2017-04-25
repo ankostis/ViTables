@@ -226,6 +226,11 @@ class Buffer(object):
         if hasattr(self.data_source, 'description'):
             return self.data_source.colnames
 
+    def get_indice_cell(self, indice):
+        if self._pandas_hdfstore:
+            return self.chunk.index[indice]
+        return str(self.start + indice + 1)
+
     def get_cell_formatter(self):
         if self._pandas_hdfstore:
             ## TODO: handle only palin DataFrame cells.
