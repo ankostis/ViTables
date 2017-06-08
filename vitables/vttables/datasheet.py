@@ -39,6 +39,9 @@ import vitables.vttables.leaf_model as leaf_model
 import vitables.vttables.leaf_view as leaf_view
 import vitables.vttables.buffer as readBuffer
 
+from . import dfmodel
+
+
 class DataSheet(QtWidgets.QMdiSubWindow):
     """
     The widget containing the displayed data of a given dataset.
@@ -67,8 +70,10 @@ class DataSheet(QtWidgets.QMdiSubWindow):
         else:
             leaf = pt_node
 
-        rbuffer = readBuffer.Buffer(leaf)
-        self.leaf_model = leaf_model.LeafModel(rbuffer)
+        self.leaf_model = dfmodel.try_as_pandas_dataframe(leaf)
+        if not self.leaf_model:
+            rbuffer = readBuffer.Buffer(leaf)
+            self.leaf_model = leaf_model.LeafModel(rbuffer)
         self.leaf_view = leaf_view.LeafView(self.leaf_model)
 
         super(DataSheet, self).__init__(self.vtgui.workspace,

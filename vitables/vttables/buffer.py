@@ -110,8 +110,8 @@ class Buffer(object):
             #
             ## Dataset elements will be read like a[row][column]
 
-            sample_df = self.try_as_pandas_dataframe(leaf)
-            if sample_df is None:
+            #sample_df = self.try_as_pandas_dataframe(leaf)
+            if True:
                 self.getCell = self.arrayCell
             else:
                 self.chunk = sample_df
