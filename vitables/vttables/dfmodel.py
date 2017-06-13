@@ -94,13 +94,14 @@ class DataFrameModel(QtCore.QAbstractTableModel):
         ## The dataset number of rows is potentially huge but tables are
         #  kept small: just the data returned by a read operation of the
         #  buffer are displayed
-        self.nrows, self.ncols = leaf.shape
+        self.nrows = leaf.shape[0]
 
         # Track selected cell.
         self.selected_cell = {'index': QtCore.QModelIndex(), 'buffer_start': 0}
 
         # Populate the model with the first chunk of data.
         self._chunk = chunk = self.loadData(0, self.chunk_size)
+        self.ncols = len(chunk.columns)
 
         def count_multiindex(index):
             if isinstance(index, pd.MultiIndex):

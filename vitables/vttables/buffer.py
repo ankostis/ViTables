@@ -99,7 +99,6 @@ class Buffer(object):
 
         # The numpy array where read data will be stored
         self.chunk = numpy.array([])
-        self.start = 0
 
         # The method used for reading data depends on the kind of node.
         # Setting the reader method at initialization time increases the
@@ -322,7 +321,6 @@ class Buffer(object):
         else:
             # Update the buffer contents and its start position
             self.chunk = data
-            self.start = start
 
     def scalarCell(self, row, col):
         """
@@ -342,8 +340,8 @@ class Buffer(object):
         try:
             return self.chunk[()]
         except IndexError:
-            self.logger.error('IndexError! buffer start: {0} row, column: '
-                              '{1}, {2}'.format(self.start, row, col))
+            self.logger.error('IndexError! row, column: {1}, {2}'
+                              .format(row, col))
 
     def vectorCell(self, row, col):
         """
@@ -373,8 +371,8 @@ class Buffer(object):
         try:
             return self.chunk[row]
         except IndexError:
-            self.logger.error('IndexError! buffer start: {0} row, column: '
-                              '{1}, {2}'.format(self.start, row, col))
+            self.logger.error('IndexError! row, column: {1}, {2}'
+                              .format(row, col))
 
     def EArrayCell(self, row, col):
         """
@@ -400,8 +398,8 @@ class Buffer(object):
         try:
             return self.data_source.read()[row]
         except IndexError:
-            self.logger.error('IndexError! buffer start: {0} row, column: '
-                              '{1}, {2}'.format(self.start, row, col))
+            self.logger.error('IndexError! row, column: {1}, {2}'
+                              .format(row, col))
 
     def arrayCell(self, row, col):
         """
@@ -429,8 +427,8 @@ class Buffer(object):
         try:
             return self.chunk[row][col]
         except IndexError:
-            self.logger.error('IndexError! buffer start: {0} row, column: '
-                              '{1}, {2}'.format(self.start, row, col))
+            self.logger.error('IndexError! row, column: {1}, {2}'
+                              .format(row, col))
 
     ######################
     ## PANDAS DATAFRAME

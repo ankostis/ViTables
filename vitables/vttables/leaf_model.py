@@ -86,7 +86,7 @@ class LeafModel(QtCore.QAbstractTableModel):
         self.selected_cell = {'index': QtCore.QModelIndex(), 'buffer_start': 0}
 
         # Populate the model with the first chunk of data
-        self.loadData(self.rbuffer.start, self.rbuffer.chunk_size)
+        self.loadData(0, self.rbuffer.chunk_size)
 
         super(LeafModel, self).__init__(parent)
 
@@ -119,7 +119,7 @@ class LeafModel(QtCore.QAbstractTableModel):
                 return str(section)
             return str(self._column_names[section])
         # The section label for vertical header. This is a 64 bits integer
-        return str(self.rbuffer.start + section)
+        return str(self.start + section)
 
 
     def data(self, index, role=QtCore.Qt.DisplayRole):
