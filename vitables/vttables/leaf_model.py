@@ -137,8 +137,7 @@ class LeafModel(QtCore.QAbstractTableModel):
         if not index.isValid() or not (0 <= index.row() < self.numrows):
             return None
         col_indice = index.column()
-        cell = self.rbuffer.getCell(self.rbuffer.start + index.row(),
-                                    col_indice)
+        cell = self.rbuffer.getCell(index.row(), col_indice)
         if role == QtCore.Qt.DisplayRole:
             return self.formatContent(cell)
         elif role == QtCore.Qt.TextAlignmentRole:
